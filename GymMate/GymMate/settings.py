@@ -43,6 +43,13 @@ INSTALLED_APPS = [
     'rest_framework',
     "corsheaders",
     'accounts',
+    "members",
+    "trainers",
+    "attendance",
+    "plans",
+    "workouts",
+    "diets",
+    "payments",
 ]
 
 MIDDLEWARE = [

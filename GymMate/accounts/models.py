@@ -5,6 +5,13 @@ from django.utils import timezone
 from django.conf import settings
 
 
+class TimeStampedModel(models.Model):
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+
 
 class UserManager(BaseUserManager):
     def create_user(self, email, username, password=None, **extra_fields):
@@ -33,16 +40,21 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     )
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
     email = models.EmailField(unique=True)
-    username = models.CharField(max_length=150)
-    phone = models.CharField(max_length=15, blank=True, null=True)
-
+    
     role = models.CharField(max_length=20, choices=ROLE_CHOICES, default="MEMBER")
-
+    
     is_active = models.BooleanField(default=True)
+    
     is_staff = models.BooleanField(default=False)
-    date_joined = models.DateTimeField(default=timezone.now)
 
+    date_joined = models.DateTimeField(default=timezone.now)
+    
+    username = models.CharField(max_length=150)
+    
+    is_verified = models.BooleanField(default=False)
+    
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS = ["username"]
 
@@ -54,25 +66,328 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         db_table = "GymMate_Users"
 
 
-class MemberProfile(models.Model):
+
+class MembershipPlan(models.Model):
+    PLAN_CHOICES = [
+        ("basic", "Basic"),
+        ("premium", "Premium"),
+        ("vip", "VIP"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    name = models.CharField(max_length=100)
+    type = models.CharField(max_length=20, choices=PLAN_CHOICES)
+    duration_months = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+    features = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        db_table = "GymMate_membership_plans"
+
+    def __str__(self):
+        return self.name
+
+class Trainer(TimeStampedModel):
+    SPECIALIZATION_CHOICES = [
+        ("strength", "Strength"),
+        ("cardio", "Cardio"),
+        ("yoga", "Yoga"),
+        ("crossfit", "Crossfit"),
+        ("nutrition", "Nutrition"),
+        ("general", "General"),
+    ]
+
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("inactive", "Inactive"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    
     user = models.OneToOneField(
-        settings.AUTH_USER_MODEL,
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="trainer_profile"
+    )
+    
+    full_name = models.CharField(max_length=255)
+    
+    phone = models.CharField(max_length=15, blank=True, null=True)
+    
+    avatar_url = models.URLField(blank=True, null=True)
+
+    specialization = models.CharField(
+        max_length=20,
+        choices=SPECIALIZATION_CHOICES,
+        default="general"
+    )
+
+    experience_years = models.PositiveIntegerField(default=0)
+    
+    certifications = models.JSONField(default=list, blank=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="active"
+    )
+
+    bio = models.TextField(blank=True, null=True)
+    
+    
+    
+    date_joined = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        db_table = "GymMate_trainers"
+        
+    def __str__(self):
+        return self.full_name
+    
+class Member(TimeStampedModel):
+
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("inactive", "Inactive"),
+        ("expired", "Expired"),
+    ]
+
+    GOAL_CHOICES = [
+        ("weight_loss", "Weight Loss"),
+        ("muscle_gain", "Muscle Gain"),
+        ("maintenance", "Maintenance"),
+        ("endurance", "Endurance"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    user = models.OneToOneField(
+        CustomUser,
         on_delete=models.CASCADE,
         related_name="member_profile"
     )
-    height = models.FloatField(null=True, blank=True)
-    weight = models.FloatField(null=True, blank=True)
-    body_fat = models.FloatField(null=True, blank=True)
-    membership_start = models.DateField(null=True, blank=True)
-    membership_end = models.DateField(null=True, blank=True)
+    trainer = models.ForeignKey(
+        Trainer,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="assigned_members"
+    )
+    
+    email = models.EmailField(unique=True)
+   
+    phone = models.CharField(max_length=15, blank=True, null=True)
+    
+    full_name = models.CharField(max_length=255)
+    avatar_url = models.URLField(blank=True, null=True)
+
     assigned_trainer = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
+        Trainer,
+        on_delete=models.SET_NULL,
         null=True,
         blank=True,
+        related_name="members"
+    )
+
+    membership_plan = models.ForeignKey(
+        MembershipPlan,
         on_delete=models.SET_NULL,
-        related_name="assigned_members"
+        null=True,
+        blank=True,
+        related_name="members"
+    )
+
+    membership_start = models.DateField(null=True, blank=True)
+    membership_end = models.DateField(null=True, blank=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="active"
+    )
+
+    height = models.FloatField(null=True, blank=True)
+    weight = models.FloatField(null=True, blank=True)
+
+    goal = models.CharField(
+        max_length=20,
+        choices=GOAL_CHOICES,
+        default="maintenance"
+    )
+    
+    class Meta:
+        db_table = "GymMate_members"
+        
+    def __str__(self):
+        return self.full_name
+
+
+
+class MembersAttendance(models.Model):
+    STATUS_CHOICES = [
+        ("present", "Present"),
+        ("absent", "Absent"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="attendance"
+    )
+
+    date = models.DateField()
+    check_in = models.TimeField(null=True, blank=True)
+    check_out = models.TimeField(null=True, blank=True)
+
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default="present"
     )
 
     class Meta:
-        db_table = "GymMate_memberprofiles"
+        unique_together = ("member", "date")
+        db_table = "GymMate_members_attendance"
 
+    def __str__(self):
+        return f"{self.member.full_name} - {self.date}"
+
+
+class WorkoutPlan(models.Model):
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("completed", "Completed"),
+        ("paused", "Paused"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="workout_plans"
+    )
+    trainer = models.ForeignKey(
+        Trainer,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="workout_plans"
+    )
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+
+    exercises = models.JSONField(default=list)
+
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="active"
+    )
+    class Meta:
+        db_table = "GymMate_workoutplans"
+    def __str__(self):
+        return self.name
+
+
+class DietPlan(models.Model):
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("completed", "Completed"),
+        ("paused", "Paused"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="diet_plans"
+    )
+    
+    trainer = models.ForeignKey(
+        Trainer,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="diet_plans"
+    )
+
+    name = models.CharField(max_length=255)
+
+    daily_calories = models.PositiveIntegerField()
+    protein_grams = models.PositiveIntegerField()
+    carbs_grams = models.PositiveIntegerField()
+    fat_grams = models.PositiveIntegerField()
+
+    meals = models.JSONField(default=list)
+    notes = models.TextField(blank=True, null=True)
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="active"
+    )
+    
+    class Meta:
+        db_table = "GymMate_dietplans"
+    def __str__(self):
+        return self.name
+
+
+class Payment(models.Model):
+    PAYMENT_METHOD_CHOICES = [
+        ("cash", "Cash"),
+        ("card", "Card"),
+        ("upi", "UPI"),
+        ("bank_transfer", "Bank Transfer"),
+    ]
+
+    STATUS_CHOICES = [
+        ("completed", "Completed"),
+        ("pending", "Pending"),
+        ("failed", "Failed"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="payments"
+    )
+
+    plan = models.ForeignKey(
+        MembershipPlan,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="payments"
+    )
+
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_date = models.DateField()
+
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default="cash"
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="completed"
+    )
+
+    invoice_number = models.CharField(max_length=100, unique=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    class Meta:
+        db_table = "GymMate_payment"
+    def __str__(self):
+        return self.invoice_number
