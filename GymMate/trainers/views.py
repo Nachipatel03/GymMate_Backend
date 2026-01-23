@@ -12,7 +12,7 @@ class TrainerListCreateAPIView(APIView):
 
     def get(self, request):
         trainers = Trainer.objects.annotate(
-            assigned_members_count=Count("assigned_members")
+            assigned_members_count=Count("members")
         )
 
         serializer = TrainerAdminCreateSerializer(trainers, many=True)

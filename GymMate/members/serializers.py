@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.db import transaction
 from django.contrib.auth.hashers import make_password
 from accounts.models import Member
-from accounts.models import CustomUser,MembershipPlan
+from accounts.models import CustomUser,MembershipPlan,Trainer
 
 
 
@@ -61,10 +61,17 @@ class MemberRegisterSerializer(serializers.ModelSerializer):
 
 class MemberAdminCreateSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(write_only=True)
+
     assigned_membership = serializers.PrimaryKeyRelatedField(
         source="membership_plan",
         queryset=MembershipPlan.objects.all(),
-        required=False
+        required=True
+    )
+
+    assigned_trainer = serializers.PrimaryKeyRelatedField(
+        queryset=Trainer.objects.all(),
+        required=False,
+        allow_null=True
     )
 
     member_email = serializers.EmailField(
@@ -80,8 +87,10 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
             "full_name",
             "phone",
             "avatar_url",
-            "trainer",
+
+            # ✅ ONLY keep this
             "assigned_trainer",
+
             "assigned_membership",
             "membership_start",
             "membership_end",
@@ -101,7 +110,7 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
                 email=email,
                 role="MEMBER",
                 is_active=True,
-                is_verified=True,  
+                is_verified=True,
                 password=make_password(DEFAULT_PASSWORD),
             )
 
@@ -116,8 +125,19 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
 
 class MemberSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
-    trainer_name = serializers.CharField(
-        source="trainer.full_name",
+
+    assigned_trainer_id = serializers.UUIDField(
+        source="assigned_trainer.id",
+        read_only=True,
+        allow_null=True
+    )
+    assigned_trainer_name = serializers.CharField(
+        source="assigned_trainer.full_name",
+        read_only=True
+    )
+
+    membership_plan_name = serializers.CharField(
+        source="membership_plan.name",
         read_only=True
     )
 
@@ -129,8 +149,12 @@ class MemberSerializer(serializers.ModelSerializer):
             "email",
             "phone",
             "avatar_url",
-            "trainer_name",
-            "membership_plan",
+
+            # 👇 trainer fields
+            "assigned_trainer_id",
+            "assigned_trainer_name",
+            "membership_plan_id",
+            "membership_plan_name",
             "membership_start",
             "membership_end",
             "status",
@@ -139,3 +163,43 @@ class MemberSerializer(serializers.ModelSerializer):
             "weight",
             "created_at",
         ]
+        
+class MemberAdminUpdateSerializer(serializers.ModelSerializer):
+    assigned_membership = serializers.PrimaryKeyRelatedField(
+        queryset=MembershipPlan.objects.all(),
+        write_only=True,
+        required=False
+    )
+
+    assigned_trainer = serializers.PrimaryKeyRelatedField(
+        queryset=Trainer.objects.all(),
+        required=False,
+        allow_null=True
+    )
+
+    class Meta:
+        model = Member
+        fields = [
+            "assigned_trainer",
+            "assigned_membership",
+            "status",
+            "goal",
+        ]
+    def update(self, instance, validated_data):
+        # 🔑 mapped field
+        membership_plan = validated_data.pop("assigned_membership", None)
+
+        # 🔑 direct FK
+        assigned_trainer = validated_data.pop("assigned_trainer", None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if membership_plan is not None:
+            instance.membership_plan = membership_plan
+
+        if assigned_trainer is not None:
+            instance.assigned_trainer = assigned_trainer
+
+        instance.save()
+        return instance

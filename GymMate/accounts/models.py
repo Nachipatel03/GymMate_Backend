@@ -168,13 +168,7 @@ class Member(TimeStampedModel):
         on_delete=models.CASCADE,
         related_name="member_profile"
     )
-    trainer = models.ForeignKey(
-        Trainer,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="assigned_members"
-    )
-    
+  
     email = models.EmailField(unique=True)
    
     phone = models.CharField(max_length=15, blank=True, null=True)
