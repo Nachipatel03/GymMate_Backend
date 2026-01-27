@@ -44,7 +44,7 @@ class AdminMemberDetailAPIView(APIView):
 
     def get_object(self, member_id):
         return get_object_or_404(
-            Member.objects.select_related("user", "trainer", "membership_plan"),
+            Member.objects.select_related("user",  "assigned_trainer", "membership_plan"),
             id=member_id
         )
 
@@ -73,14 +73,12 @@ class AdminMemberDetailAPIView(APIView):
     # ❌ DELETE member
     def delete(self, request, member_id):
         member = self.get_object(member_id)
+        user = member.user
 
-        # Optional: also deactivate user
-        member.user.is_active = False
-        member.user.save()
-
-        member.delete()
+        member.delete()   # delete member first
+        user.delete()     # then delete user
 
         return Response(
-            {"message": "Member deleted successfully"},
-            status=status.HTTP_204_NO_CONTENT
+            {"message": "Member and user deleted successfully"},
+            status=status.HTTP_200_OK
         )
