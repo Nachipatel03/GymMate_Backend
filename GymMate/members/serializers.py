@@ -3,6 +3,9 @@ from django.db import transaction
 from django.contrib.auth.hashers import make_password
 from accounts.models import Member
 from accounts.models import CustomUser,MembershipPlan,Trainer
+from django.db import transaction, IntegrityError
+from rest_framework.exceptions import ValidationError
+
 
 
 
@@ -99,29 +102,40 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
             "height",
             "weight",
         ]
-
+    
+    def validate_email(self, value):
+        if CustomUser.objects.filter(email=value).exists():
+            raise serializers.ValidationError(
+                "User with this email already exists"
+            )
+        return value
+    
     def create(self, validated_data):
         email = validated_data.pop("email")
         DEFAULT_PASSWORD = "@Nick0314"
 
-        with transaction.atomic():
-            # 1️⃣ Create verified user
-            user = CustomUser.objects.create(
-                email=email,
-                role="MEMBER",
-                is_active=True,
-                is_verified=True,
-                password=make_password(DEFAULT_PASSWORD),
-            )
+        try:
+            with transaction.atomic():
+                user = CustomUser.objects.create(
+                    email=email,
+                    role="MEMBER",
+                    is_active=True,
+                    is_verified=True,
+                    password=make_password(DEFAULT_PASSWORD),
+                )
 
-            # 2️⃣ Create member profile
-            member = Member.objects.create(
-                user=user,
-                email=email,
-                **validated_data
-            )
+                member = Member.objects.create(
+                    user=user,
+                    email=email,
+                    **validated_data
+                )
 
-        return member
+            return member
+
+        except IntegrityError:
+            raise ValidationError({
+                "email": "User with this email already exists"
+            })
 
 class MemberSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
@@ -187,18 +201,20 @@ class MemberAdminUpdateSerializer(serializers.ModelSerializer):
         ]
     def update(self, instance, validated_data):
         # 🔑 mapped field
-        membership_plan = validated_data.pop("assigned_membership", None)
+        membership_plan = validated_data.pop("assigned_membership", serializers.empty)
 
         # 🔑 direct FK
-        assigned_trainer = validated_data.pop("assigned_trainer", None)
+        assigned_trainer = validated_data.pop("assigned_trainer", serializers.empty)
 
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
 
-        if membership_plan is not None:
+        # ✅ handle membership plan (allow null)
+        if membership_plan is not serializers.empty:
             instance.membership_plan = membership_plan
 
-        if assigned_trainer is not None:
+        # ✅ handle trainer (allow null)
+        if assigned_trainer is not serializers.empty:
             instance.assigned_trainer = assigned_trainer
 
         instance.save()

@@ -2,7 +2,7 @@ from rest_framework import serializers
 from accounts.models import Trainer,CustomUser
 from django.db import transaction
 from django.contrib.auth.hashers import make_password
-
+from django.db import IntegrityError
 
 
 class TrainerAdminCreateSerializer(serializers.ModelSerializer):
@@ -34,26 +34,32 @@ class TrainerAdminCreateSerializer(serializers.ModelSerializer):
         ]
     def create(self, validated_data):
         email = validated_data.pop("email")
-        DEFAULT_PASSWORD = "@Nick0314" 
+        DEFAULT_PASSWORD = "@Nick0314"
 
-        with transaction.atomic():
-            # 1️⃣ Create user
-            user = CustomUser.objects.create(
-                email=email,
-                role="TRAINER",
-                is_active=True,
-                is_staff=True,
-                password=make_password(DEFAULT_PASSWORD)
-            )
+        try:
+            with transaction.atomic():
+                # 1️⃣ Create user
+                user = CustomUser.objects.create(
+                    email=email,
+                    role="TRAINER",
+                    is_active=True,
+                    is_staff=True,
+                    password=make_password(DEFAULT_PASSWORD),
+                )
 
-            # 2️⃣ Create trainer profile
-            trainer = Trainer.objects.create(
-                user=user,
-                **validated_data
-            )
+                # 2️⃣ Create trainer profile
+                trainer = Trainer.objects.create(
+                    user=user,
+                    **validated_data
+                )
+
+        except IntegrityError:
+            raise serializers.ValidationError({
+                "email": "Email already exists"
+            })
 
         return trainer
-    
+        
         
     def validate_phone(self, value):
         if value and not value.isdigit():
