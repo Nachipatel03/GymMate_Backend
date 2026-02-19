@@ -2,7 +2,7 @@ from rest_framework import serializers
 from django.db import transaction
 from django.contrib.auth.hashers import make_password
 from accounts.models import Member
-from accounts.models import CustomUser,MembershipPlan,Trainer
+from accounts.models import CustomUser,MembershipPlan,Trainer,WorkoutPlan,DietPlan
 from django.db import transaction, IntegrityError
 from rest_framework.exceptions import ValidationError
 
@@ -90,18 +90,22 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
             "full_name",
             "phone",
             "avatar_url",
-
-            # ✅ ONLY keep this
             "assigned_trainer",
-
             "assigned_membership",
-            "membership_start",
-            "membership_end",
+            # "membership_start",
+            # "membership_end",
             "status",
             "goal",
             "height",
             "weight",
         ]
+    
+    def validate_phone(self, value):
+        if Member.objects.filter(phone=value).exists():
+            raise serializers.ValidationError(
+                "Member with this phone number already exists"
+            )
+        return value
     
     def validate_email(self, value):
         if CustomUser.objects.filter(email=value).exists():
@@ -137,6 +141,15 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
                 "email": "User with this email already exists"
             })
 
+class MemberWorkoutPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = WorkoutPlan
+        fields = ["id", "name", "status", "start_date", "end_date"]
+        
+class MemberDietPlanSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = DietPlan
+        fields = ["id", "name", "status"]
 class MemberSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(source="user.email", read_only=True)
 
@@ -150,8 +163,18 @@ class MemberSerializer(serializers.ModelSerializer):
         read_only=True
     )
 
-    membership_plan_name = serializers.CharField(
-        source="membership_plan.name",
+    # membership_plan_name = serializers.CharField(
+    #     source="membership_plan.name",
+    #     read_only=True
+    # )
+    
+    workout_plans = MemberWorkoutPlanSerializer(
+        many=True,
+        read_only=True
+    )
+
+    diet_plans = MemberDietPlanSerializer(
+        many=True,
         read_only=True
     )
 
@@ -163,19 +186,19 @@ class MemberSerializer(serializers.ModelSerializer):
             "email",
             "phone",
             "avatar_url",
-
-            # 👇 trainer fields
             "assigned_trainer_id",
             "assigned_trainer_name",
-            "membership_plan_id",
-            "membership_plan_name",
-            "membership_start",
-            "membership_end",
+            # "membership_plan_id",
+            # "membership_plan_name",
+            # "membership_start",
+            # "membership_end",
             "status",
             "goal",
             "height",
             "weight",
             "created_at",
+            "workout_plans",   
+            "diet_plans",
         ]
         
 class MemberAdminUpdateSerializer(serializers.ModelSerializer):

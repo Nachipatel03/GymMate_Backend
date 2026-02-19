@@ -2,6 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import IsAdminUser
+from accounts.permissions import IsAdminOrTrainer
+
 from django.db.models import Count
 from rest_framework import status
 from django.shortcuts import get_object_or_404
@@ -11,16 +13,32 @@ from .serializers import MemberAdminCreateSerializer, MemberSerializer,MemberAdm
 
 
 class AdminMemberListCreateAPIView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdminOrTrainer]
 
     def get(self, request):
-        members = (
-            Member.objects
-            .select_related("user",  "assigned_trainer", "membership_plan")
-        )
+
+        if request.user.role == "ADMIN":
+            members = Member.objects.all()
+
+        elif request.user.role == "TRAINER":
+            trainer = request.user.trainer_profile
+            members = Member.objects.select_related(
+                "user",
+                "assigned_trainer",
+                "membership_plan"
+            ).prefetch_related(
+                "workout_plans",
+                "diet_plans"
+            )
+
+        else:
+            return Response(
+                {"error": "Not authorized"},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         serializer = MemberSerializer(members, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.data)
 
     def post(self, request):
         serializer = MemberAdminCreateSerializer(data=request.data)
@@ -40,7 +58,8 @@ class AdminMemberListCreateAPIView(APIView):
 
 
 class AdminMemberDetailAPIView(APIView):
-    permission_classes = [IsAdminUser]
+    permission_classes = [IsAdminOrTrainer]
+    
 
     def get_object(self, member_id):
         return get_object_or_404(
@@ -70,7 +89,7 @@ class AdminMemberDetailAPIView(APIView):
             status=status.HTTP_200_OK
         )
 
-    # ❌ DELETE member
+
     def delete(self, request, member_id):
         member = self.get_object(member_id)
         user = member.user

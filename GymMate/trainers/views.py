@@ -1,9 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
-from accounts.models import Trainer
-from .serializers import TrainerSerializer,TrainerAdminCreateSerializer
+from accounts.models import Trainer,Member,WorkoutPlan
+from .serializers import TrainerSerializer,TrainerAdminCreateSerializer,WorkoutPlanSerializer
 from rest_framework import permissions
+from accounts.permissions import IsTrainer
 from django.db.models import Count
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
@@ -79,4 +80,85 @@ class AdminTrainerDetailAPIView(APIView):
         return Response(
             {"message": "Trainer deleted successfully"},
             status=status.HTTP_200_OK
+        )
+
+
+class WorkoutPlanAPIView(APIView):
+    permission_classes = [IsTrainer]
+
+    def get(self, request):
+        trainer = request.user.trainer_profile
+
+        member_id = request.query_params.get("member_id")
+
+        queryset = WorkoutPlan.objects.filter(trainer=trainer)
+
+        if member_id:
+            queryset = queryset.filter(member_id=member_id)
+
+        serializer = WorkoutPlanSerializer(queryset, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def post(self, request):
+        serializer = WorkoutPlanSerializer(
+            data=request.data,
+            context={"request": request}
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data, status=201)
+    
+class WorkoutPlanDetailAPIView(APIView):
+    permission_classes = [IsTrainer]
+
+    def get_object(self, request, pk):
+        trainer = request.user.trainer_profile
+
+        # 🔒 Only allow trainer to access their own plans
+        return get_object_or_404(
+            WorkoutPlan,
+            id=pk,
+            trainer=trainer
+        )
+
+    def put(self, request, pk):
+        workout = self.get_object(request, pk)
+
+        serializer = WorkoutPlanSerializer(
+            workout,
+            data=request.data,
+            partial=False,  # full update
+            context={"request": request}
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def patch(self, request, pk):
+        workout = self.get_object(request, pk)
+
+        serializer = WorkoutPlanSerializer(
+            workout,
+            data=request.data,
+            partial=True,  # partial update
+            context={"request": request}
+        )
+
+        serializer.is_valid(raise_exception=True)
+        serializer.save()
+
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def delete(self, request, pk):
+        workout = self.get_object(request, pk)
+
+        workout.delete()
+
+        return Response(
+            {"message": "Workout plan deleted successfully"},
+            status=status.HTTP_204_NO_CONTENT
         )

@@ -1,8 +1,9 @@
 from rest_framework import serializers
-from accounts.models import Trainer,CustomUser
+from accounts.models import Trainer,CustomUser,Member,WorkoutPlan
 from django.db import transaction
 from django.contrib.auth.hashers import make_password
 from django.db import IntegrityError
+from django.shortcuts import get_object_or_404
 
 
 class TrainerAdminCreateSerializer(serializers.ModelSerializer):
@@ -101,4 +102,90 @@ class TrainerSerializer(serializers.ModelSerializer):
             "updated_at",
             "assigned_members_count",
         ]
+
+
+class WorkoutPlanSerializer(serializers.ModelSerializer):
+
+    member_id = serializers.UUIDField(write_only=True)
+    member_name = serializers.CharField(
+        source="member.full_name",
+        read_only=True
+    )
+
+    class Meta:
+        model = WorkoutPlan
+        fields = [
+            "id",
+            "name",
+            "description",
+            "status",
+            "exercises",
+            "start_date",
+            "end_date",
+            "member_id",
+            "member_name",
+        ]
+        read_only_fields = ["id", "member_name"]
+
+    def validate_exercises(self, value):
+        """
+        Ensure exercises list structure is correct
+        """
+        if not isinstance(value, list):
+            raise serializers.ValidationError("Exercises must be a list")
+
+        for exercise in value:
+            if "name" not in exercise:
+                raise serializers.ValidationError("Each exercise must have a name")
+            if "sets" not in exercise:
+                raise serializers.ValidationError("Each exercise must have sets")
+            if "reps" not in exercise:
+                raise serializers.ValidationError("Each exercise must have reps")
+            if "day" not in exercise:
+                raise serializers.ValidationError("Each exercise must have day")
+
+        return value
+
+    def create(self, validated_data):
+
+        request = self.context.get("request")
+        trainer = request.user.trainer_profile
+
+        member_id = validated_data.pop("member_id")
+
+        # 🔒 Only allow members assigned to this trainer
+        member = get_object_or_404(
+            Member,
+            id=member_id,
+            assigned_trainer=trainer
+        )
+
+        workout = WorkoutPlan.objects.create(
+            member=member,
+            trainer=trainer,
+            **validated_data
+        )
+
+        return workout
     
+    def update(self, instance, validated_data):
+        request = self.context.get("request")
+        trainer = request.user.trainer_profile
+
+        member_id = validated_data.pop("member_id", None)
+
+        if member_id:
+            member = get_object_or_404(
+                Member,
+                id=member_id,
+                assigned_trainer=trainer
+            )
+            instance.member = member
+
+        # Update remaining fields
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        instance.save()
+
+        return instance

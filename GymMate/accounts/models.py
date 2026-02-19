@@ -3,6 +3,8 @@ from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils import timezone
 from django.conf import settings
+from dateutil.relativedelta import relativedelta
+from django.db.models import Q
 
 
 class TimeStampedModel(models.Model):
@@ -146,6 +148,76 @@ class Trainer(TimeStampedModel):
     def __str__(self):
         return self.full_name
     
+# class Member(TimeStampedModel):
+
+#     STATUS_CHOICES = [
+#         ("active", "Active"),
+#         ("inactive", "Inactive"),
+#         ("expired", "Expired"),
+#     ]
+
+#     GOAL_CHOICES = [
+#         ("weight_loss", "Weight Loss"),
+#         ("muscle_gain", "Muscle Gain"),
+#         ("maintenance", "Maintenance"),
+#         ("endurance", "Endurance"),
+#     ]
+
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+#     user = models.OneToOneField(
+#         CustomUser,
+#         on_delete=models.CASCADE,
+#         related_name="member_profile"
+#     )
+  
+#     email = models.EmailField(unique=True)
+   
+#     phone = models.CharField(max_length=15, blank=True, null=True,unique=True)
+    
+#     full_name = models.CharField(max_length=255)
+#     avatar_url = models.URLField(blank=True, null=True)
+
+#     assigned_trainer = models.ForeignKey(
+#         Trainer,
+#         on_delete=models.SET_NULL,
+#         null=True,
+#         blank=True,
+#         related_name="members"
+#     )
+
+#     membership_plan = models.ForeignKey(
+#         MembershipPlan,
+#         on_delete=models.SET_NULL,
+#         null=True,
+#         blank=True,
+#         related_name="members"
+#     )
+
+#     membership_start = models.DateField(null=True, blank=True)
+#     membership_end = models.DateField(null=True, blank=True)
+
+#     status = models.CharField(
+#         max_length=20,
+#         choices=STATUS_CHOICES,
+#         default="active"
+#     )
+
+#     height = models.FloatField(null=True, blank=True)
+#     weight = models.FloatField(null=True, blank=True)
+
+#     goal = models.CharField(
+#         max_length=20,
+#         choices=GOAL_CHOICES,
+#         default="maintenance"
+#     )
+    
+#     class Meta:
+#         db_table = "GymMate_members"
+        
+#     def __str__(self):
+#         return self.full_name
+
 class Member(TimeStampedModel):
 
     STATUS_CHOICES = [
@@ -171,7 +243,7 @@ class Member(TimeStampedModel):
   
     email = models.EmailField(unique=True)
    
-    phone = models.CharField(max_length=15, blank=True, null=True)
+    phone = models.CharField(max_length=15, blank=True, null=True,unique=True)
     
     full_name = models.CharField(max_length=255)
     avatar_url = models.URLField(blank=True, null=True)
@@ -183,17 +255,6 @@ class Member(TimeStampedModel):
         blank=True,
         related_name="members"
     )
-
-    membership_plan = models.ForeignKey(
-        MembershipPlan,
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="members"
-    )
-
-    membership_start = models.DateField(null=True, blank=True)
-    membership_end = models.DateField(null=True, blank=True)
 
     status = models.CharField(
         max_length=20,
@@ -216,7 +277,73 @@ class Member(TimeStampedModel):
     def __str__(self):
         return self.full_name
 
+class MemberMembership(TimeStampedModel):
 
+    STATUS_CHOICES = [
+        ("active", "Active"),
+        ("expired", "Expired"),
+        ("cancelled", "Cancelled"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="memberships"
+    )
+
+    plan = models.ForeignKey(
+        MembershipPlan,
+        on_delete=models.SET_NULL,
+        null=True,
+        related_name="memberships"
+    )
+
+    start_date = models.DateField()
+    end_date = models.DateField()
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default="active"
+    )
+
+    auto_renew = models.BooleanField(default=False)
+
+    class Meta:
+        
+        constraints = [
+        models.UniqueConstraint(
+            fields=["member"],
+            condition=Q(status="active"),
+            name="unique_active_membership_per_member"
+        )
+    ]
+        indexes = [
+        models.Index(fields=["end_date"]),
+        models.Index(fields=["status"]),
+    ]
+        
+        db_table = "GymMate_member_memberships"
+
+    def __str__(self):
+        return f"{self.member.full_name} - {self.plan.name}"
+
+    def save(self, *args, **kwargs):
+        if self.start_date and self.plan and not self.end_date:
+            self.end_date = self.start_date + relativedelta(
+                months=self.plan.duration_months
+            )
+        super().save(*args, **kwargs)
+        
+        if self.status == "active":
+            MemberMembership.objects.filter(
+                member=self.member,
+                status="active"
+            ).exclude(id=self.id).update(status="expired")
+
+        
 
 class MembersAttendance(models.Model):
     STATUS_CHOICES = [
@@ -356,11 +483,11 @@ class Payment(models.Model):
         related_name="payments"
     )
 
-    plan = models.ForeignKey(
-        MembershipPlan,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="payments"
+    membership = models.ForeignKey(
+    MemberMembership,
+    on_delete=models.SET_NULL,
+    null=True,
+    related_name="payments"
     )
 
     amount = models.DecimalField(max_digits=10, decimal_places=2)
@@ -375,8 +502,10 @@ class Payment(models.Model):
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
-        default="completed"
+        default="pending"
     )
+    transaction_id = models.CharField(max_length=255, blank=True, null=True)
+    gateway_response = models.JSONField(blank=True, null=True)
 
     invoice_number = models.CharField(max_length=100, unique=True)
 
@@ -385,3 +514,33 @@ class Payment(models.Model):
         db_table = "GymMate_payment"
     def __str__(self):
         return self.invoice_number
+    
+
+class Notification(TimeStampedModel):
+
+    USER_TYPE_CHOICES = [
+        ("admin", "Admin"),
+        ("member", "Member"),
+        ("trainer", "Trainer"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    user = models.ForeignKey(
+        CustomUser,
+        on_delete=models.CASCADE,
+        related_name="notifications"
+    )
+
+    title = models.CharField(max_length=255)
+    message = models.TextField()
+
+    is_read = models.BooleanField(default=False)
+
+    class Meta:
+        db_table = "GymMate_notifications"
+
+    def __str__(self):
+        return self.title
+
+
