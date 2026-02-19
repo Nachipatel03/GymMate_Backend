@@ -43,6 +43,13 @@ INSTALLED_APPS = [
     'rest_framework',
     "corsheaders",
     'accounts',
+    "members",
+    "trainers",
+    "attendance",
+    "plans",
+    "workouts",
+    "diets",
+    "payments",
 ]
 
 MIDDLEWARE = [
@@ -143,8 +150,8 @@ REST_FRAMEWORK = {
 }
 
 SIMPLE_JWT = {
-    "ACCESS_TOKEN_LIFETIME": timedelta(hours=1),
-    "REFRESH_TOKEN_LIFETIME": timedelta(days=7),
+    "ACCESS_TOKEN_LIFETIME": timedelta(hours=2),
+    "REFRESH_TOKEN_LIFETIME": timedelta(hours=24),
     "ROTATE_REFRESH_TOKENS": True,
     "BLACKLIST_AFTER_ROTATION": True,
 
