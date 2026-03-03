@@ -1,5 +1,6 @@
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-
+from accounts.models import Notification
+from rest_framework import serializers
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
 
     @classmethod
@@ -24,3 +25,16 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
             
         }
         return data
+    
+class NotificationSerializer(serializers.ModelSerializer):
+
+    class Meta:
+        model = Notification
+        fields = [
+            "id",
+            "title",
+            "message",
+            "is_read",
+            "created_at",
+        ]
+        read_only_fields = fields

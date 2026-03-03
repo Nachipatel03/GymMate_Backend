@@ -5,7 +5,7 @@ from accounts.models import Trainer,Member,WorkoutPlan
 from .serializers import TrainerSerializer,TrainerAdminCreateSerializer,WorkoutPlanSerializer
 from rest_framework import permissions
 from accounts.permissions import IsTrainer
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404
 from rest_framework.exceptions import ValidationError
 
@@ -14,7 +14,7 @@ class TrainerListCreateAPIView(APIView):
 
     def get(self, request):
         trainers = Trainer.objects.annotate(
-            assigned_members_count=Count("members")
+            assigned_members_count=Count("members", filter=Q(members__is_deleted=False))
         )
 
         serializer = TrainerAdminCreateSerializer(trainers, many=True)
@@ -40,7 +40,9 @@ class AdminTrainerDetailAPIView(APIView):
 
     def get_object(self, trainer_id):
         return get_object_or_404(
-            Trainer.objects.select_related("user"),
+            Trainer.objects.select_related("user").annotate(
+                assigned_members_count=Count("members", filter=Q(members__is_deleted=False))
+            ),
             id=trainer_id
         )
     def get(self, request, trainer_id):

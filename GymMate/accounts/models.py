@@ -270,6 +270,7 @@ class Member(TimeStampedModel):
         choices=GOAL_CHOICES,
         default="maintenance"
     )
+    is_deleted = models.BooleanField(default=False)
     
     class Meta:
         db_table = "GymMate_members"
@@ -518,7 +519,7 @@ class Payment(models.Model):
 
 class Notification(TimeStampedModel):
 
-    USER_TYPE_CHOICES = [
+    TYPE_CHOICES = [
         ("admin", "Admin"),
         ("member", "Member"),
         ("trainer", "Trainer"),
@@ -530,6 +531,10 @@ class Notification(TimeStampedModel):
         CustomUser,
         on_delete=models.CASCADE,
         related_name="notifications"
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES
     )
 
     title = models.CharField(max_length=255)
