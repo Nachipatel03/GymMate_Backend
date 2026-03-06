@@ -1,8 +1,19 @@
+from django.utils import timezone
 from rest_framework import serializers
 from django.db import transaction
 from django.contrib.auth.hashers import make_password
-from accounts.models import Member,Notification
-from accounts.models import CustomUser,MembershipPlan,Trainer,WorkoutPlan,DietPlan
+from django.db.models import Sum
+from accounts.models import (
+    Member, Notification, Payment, MemberProgress,
+    CustomUser, MembershipPlan, Trainer, WorkoutPlan
+)
+from diets.models import DietPlan
+
+class MemberProgressSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = MemberProgress
+        fields = ["id", "date", "weight", "body_fat", "muscle_mass", "measurements", "notes"]
+        read_only_fields = ["id"]
 from django.db import transaction, IntegrityError
 from rest_framework.exceptions import ValidationError
 from accounts.services.membership_service import MembershipService
@@ -51,6 +62,7 @@ class MemberRegisterSerializer(serializers.ModelSerializer):
                     if member:
                         member.is_deleted = False
                         member.assigned_trainer = None  # ✅ Clear old trainer on re-registration
+                        member.created_at = timezone.now() # ✅ Reset join date to today
                         for key, value in validated_data.items():
                             setattr(member, key, value)
                         member.save()
@@ -118,14 +130,16 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
             "weight",
         ]
     def validate_email(self, value):
-        if CustomUser.objects.filter(email=value).exists():
+        user = CustomUser.objects.filter(email=value).first()
+        if user and user.is_active:
             raise serializers.ValidationError(
                 "User with this email already exists."
             )
         return value
 
     def validate_phone(self, value):
-        if Member.objects.filter(phone=value).exists():
+        member = Member.objects.filter(phone=value).first()
+        if member and not member.is_deleted:
             raise serializers.ValidationError(
                 "Member with this phone already exists."
             )
@@ -133,26 +147,45 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
     
     def create(self, validated_data):
         from accounts.services.membership_service import MembershipService
+        from accounts.services.email_service import EmailService
 
         email = validated_data.pop("email")
         plan = validated_data.pop("plan_id", None)
 
-        DEFAULT_PASSWORD = "@Nick0314"
+        DEFAULT_PASSWORD = "Member@123"
 
         with transaction.atomic():
-            user = CustomUser.objects.create(
-                email=email,
-                role="MEMBER",
-                is_active=True,
-                is_verified=True,
-                password=make_password(DEFAULT_PASSWORD),
-            )
+            user = CustomUser.objects.filter(email=email).first()
+            
+            if user:
+                # Reactivate existing inactive user
+                user.is_active = True
+                user.is_verified = True
+                user.password = make_password(DEFAULT_PASSWORD)
+                user.save()
+            else:
+                user = CustomUser.objects.create(
+                    email=email,
+                    role="MEMBER",
+                    is_active=True,
+                    is_verified=True,
+                    password=make_password(DEFAULT_PASSWORD),
+                )
 
-            member = Member.objects.create(
-                user=user,
-                email=email,
-                **validated_data
-            )
+            member = Member.objects.filter(user=user).first()
+            if member:
+                # Reactivate existing deleted member
+                member.is_deleted = False
+                member.created_at = timezone.now() # ✅ Reset join date to today
+                for key, value in validated_data.items():
+                    setattr(member, key, value)
+                member.save()
+            else:
+                member = Member.objects.create(
+                    user=user,
+                    email=email,
+                    **validated_data
+                )
 
             # ✅ Activate membership if plan selected
             if plan:
@@ -161,6 +194,13 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
                     plan=plan,
                     payment_method="cash"
                 )
+        
+        # ✅ Send welcome email after transaction success
+        EmailService.send_welcome_email(
+            email=email,
+            full_name=member.full_name,
+            password=DEFAULT_PASSWORD
+        )
 
         return member
 
@@ -168,7 +208,7 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
 class MemberWorkoutPlanSerializer(serializers.ModelSerializer):
     class Meta:
         model = WorkoutPlan
-        fields = ["id", "name", "status", "start_date", "end_date"]
+        fields = ["id", "name", "description", "exercises", "day", "end_time", "status", "start_date", "end_date"]
         
 class MemberDietPlanSerializer(serializers.ModelSerializer):
     class Meta:
@@ -206,6 +246,7 @@ class MemberSerializer(serializers.ModelSerializer):
     )
     
     can_change_plan = serializers.SerializerMethodField()
+    attendance_streak = serializers.SerializerMethodField()
 
 
     class Meta:
@@ -218,9 +259,13 @@ class MemberSerializer(serializers.ModelSerializer):
             "status",
             "goal",
             "can_change_plan",
+            "attendance_streak",
             "assigned_trainer_id",      # ✅ MUST BE HERE
             "assigned_trainer_name",    # ✅ MUST BE HERE
             "join_date",                # ✅ MUST BE HERE
+            "height",
+            "weight",
+            "goal_weight",
             "active_membership",
             "workout_plans",   
             "diet_plans",
@@ -229,6 +274,28 @@ class MemberSerializer(serializers.ModelSerializer):
     def get_can_change_plan(self, obj):
         active_membership = obj.memberships.filter(status="active").exists()
         return not active_membership
+
+    def get_attendance_streak(self, obj):
+        attendance = obj.attendance.order_by("-date")
+        if not attendance.exists():
+            return 0
+        
+        streak = 0
+        current_date = timezone.now().date()
+        
+        # Check if they attended today or yesterday to continue streak
+        last_attendance = attendance[0].date
+        if last_attendance < current_date - timezone.timedelta(days=1):
+            return 0
+            
+        expected_date = last_attendance
+        for record in attendance:
+            if record.date == expected_date:
+                streak += 1
+                expected_date -= timezone.timedelta(days=1)
+            else:
+                break
+        return streak
     
     def get_active_membership(self, obj):
         membership = obj.memberships.filter(status="active").first()
@@ -281,30 +348,49 @@ class MemberAdminUpdateSerializer(serializers.ModelSerializer):
                 "Member with this phone already exists."
             )
         return value
-    
     def update(self, instance, validated_data):
 
         # Update trainer (even if null)
         if "assigned_trainer" in validated_data:
             instance.assigned_trainer = validated_data.get("assigned_trainer")
 
-        # Update normal fields
+        old_status = instance.status
+        new_status = validated_data.get("status", old_status)
+
+        # Handle membership change
+        plan_activated = False
+        if "plan_id" in validated_data:
+            plan = validated_data.get("plan_id")
+            if plan:
+                MembershipService.activate_membership(
+                    member=instance,
+                    plan=plan,
+                    payment_method="cash"
+                )
+                plan_activated = True
+                new_status = "active"
+
+        # Update normal fields Let status be updated here
+        if "status" in validated_data and not plan_activated:
+            if new_status != old_status:
+                user = instance.user
+                from accounts.services.email_service import EmailService
+                
+                if new_status == "active":
+                    user.is_active = True
+                    user.is_verified = True
+                    user.save()
+                    EmailService.send_account_activation_email(user.email, instance.full_name)
+                elif new_status == "inactive":
+                    user.is_active = False
+                    user.save()
+                    EmailService.send_account_inactivation_email(user.email, instance.full_name)
+
         if "status" in validated_data:
-            instance.status = validated_data.get("status")
+            instance.status = new_status
 
         if "goal" in validated_data:
             instance.goal = validated_data.get("goal")
-
-        # Handle membership change
-        
-        # if "plan_id" in validated_data:
-        #     plan = validated_data.get("plan_id")
-        #     if plan:
-        #         MembershipService.activate_membership(
-        #             member=instance,
-        #             plan=plan,
-        #             payment_method="cash"
-        #         )
 
         instance.save()
         return instance

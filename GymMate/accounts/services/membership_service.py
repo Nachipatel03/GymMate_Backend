@@ -91,6 +91,16 @@ class MembershipService:
             message=f"{member.full_name} activated {plan.name} plan. Amount ₹{plan.price}."
         )
 
+        # 6️⃣ Send Activation Email
+        from accounts.services.email_service import EmailService
+        EmailService.send_activation_email(
+            email=member.user.email,
+            full_name=member.full_name,
+            plan_name=plan.name,
+            start_date=start_date,
+            end_date=end_date
+        )
+
         return membership
 
     # ------------------------------------------------------

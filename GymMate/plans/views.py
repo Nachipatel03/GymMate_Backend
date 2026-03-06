@@ -46,7 +46,7 @@ class MembershipPlanDetailAPIView(APIView):
         return get_object_or_404(MembershipPlan, pk=pk, is_active=True)
     
     def is_plan_in_use(self, plan):
-        return plan.members.filter(status="active"    ).exists()
+        return plan.memberships.filter(status="active"    ).exists()
     
     def get(self, request, pk):
         plan = self.get_object(pk)

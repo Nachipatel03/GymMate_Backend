@@ -21,6 +21,8 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
             "plan",
             "amount",
             "payment_method",
+            "status",
+            "due_date",
         ]
 
     def create(self, validated_data):
@@ -45,8 +47,30 @@ class PaymentCreateSerializer(serializers.ModelSerializer):
             amount=validated_data["amount"],
             payment_date=today,
             payment_method=validated_data["payment_method"],
-            status="completed",
+            status=validated_data.get("status", "completed"),
+            due_date=validated_data.get("due_date"),
             invoice_number=f"INV-{uuid.uuid4().hex[:8]}",
         )
 
         return payment
+
+
+class PaymentListSerializer(serializers.ModelSerializer):
+    member_name = serializers.CharField(source="member.full_name", read_only=True)
+    member_email = serializers.EmailField(source="member.email", read_only=True)
+    plan_name = serializers.CharField(source="membership.plan.name", read_only=True)
+
+    class Meta:
+        model = Payment
+        fields = [
+            "id",
+            "member_name",
+            "member_email",
+            "amount",
+            "payment_method",
+            "status",
+            "payment_date",
+            "due_date",
+            "plan_name",
+            "invoice_number",
+        ]
