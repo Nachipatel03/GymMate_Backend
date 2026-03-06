@@ -107,6 +107,10 @@ class TrainerSerializer(serializers.ModelSerializer):
 class WorkoutPlanSerializer(serializers.ModelSerializer):
 
     member_id = serializers.UUIDField(write_only=True)
+    member_id_display = serializers.UUIDField(
+        source="member.id",
+        read_only=True
+    )
     member_name = serializers.CharField(
         source="member.full_name",
         read_only=True
@@ -125,9 +129,10 @@ class WorkoutPlanSerializer(serializers.ModelSerializer):
             "start_date",
             "end_date",
             "member_id",
+            "member_id_display",
             "member_name",
         ]
-        read_only_fields = ["id", "member_name"]
+        read_only_fields = ["id", "member_name", "member_id_display"]
 
     def validate(self, data):
         member_id = data.get("member_id")

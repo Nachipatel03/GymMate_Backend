@@ -88,6 +88,24 @@ class MemberProgressAPIView(APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
+class TrainerMemberProgressAPIView(APIView):
+    """Allows a trainer to view progress logs for any of their assigned members."""
+    permission_classes = [IsAdminOrTrainer]
+
+    def get(self, request, member_id):
+        trainer = request.user.trainer_profile
+        member = get_object_or_404(
+            Member,
+            id=member_id,
+            assigned_trainer=trainer,
+            is_deleted=False
+        )
+        progress = MemberProgress.objects.filter(member=member).order_by("date", "created_at")
+        serializer = MemberProgressSerializer(progress, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+
 class AdminMemberListCreateAPIView(APIView):
     permission_classes = [IsAdminOrTrainer]
 

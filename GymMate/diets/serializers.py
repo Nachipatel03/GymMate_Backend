@@ -16,16 +16,20 @@ class DietPlanSerializer(serializers.ModelSerializer):
         source='member',
         write_only=True
     )
+    member_id_display = serializers.UUIDField(
+        source='member.id',
+        read_only=True
+    )
 
     class Meta:
         model = DietPlan
         fields = [
-            'id', 'name', 'member', 'member_id', 'member_name', 
+            'id', 'name', 'member', 'member_id', 'member_id_display', 'member_name', 
             'trainer', 'trainer_name', 'daily_calories', 
             'protein_grams', 'carbs_grams', 'fat_grams', 'meals',
             'notes', 'status', 'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'trainer', 'created_at', 'updated_at', 'member']
+        read_only_fields = ['id', 'trainer', 'created_at', 'updated_at', 'member', 'member_id_display']
 
     def validate(self, data):
         # Additional validation if needed
