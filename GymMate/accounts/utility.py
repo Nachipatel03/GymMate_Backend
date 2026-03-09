@@ -42,3 +42,24 @@ def check_membership_expiry():
     )
 
     expired.update(status="expired")
+
+    # 4️⃣ PENDING PAYMENTS DUE TOMORROW → ADMIN
+    pay_notify_date = today + timedelta(days=1)
+    pending_payments = Payment.objects.filter(
+        status="pending",
+        due_date=pay_notify_date
+    )
+
+    for payment in pending_payments:
+        for admin in admin_users:
+            if not Notification.objects.filter(
+                user=admin,
+                title="Payment Due Tomorrow",
+                message__icontains=payment.member.full_name
+            ).exists():
+                Notification.objects.create(
+                    user=admin,
+                    type="admin",
+                    title="Payment Due Tomorrow",
+                    message=f"Payment for {payment.member.full_name} (₹{payment.amount}) is due tomorrow."
+                )

@@ -1,4 +1,5 @@
 import uuid
+import datetime
 from django.db import models
 from django.contrib.auth.models import AbstractBaseUser, PermissionsMixin, BaseUserManager
 from django.utils import timezone
@@ -270,6 +271,8 @@ class Member(TimeStampedModel):
         choices=GOAL_CHOICES,
         default="maintenance"
     )
+    goal_weight = models.FloatField(null=True, blank=True)
+    is_deleted = models.BooleanField(default=False)
     
     class Meta:
         db_table = "GymMate_members"
@@ -345,7 +348,29 @@ class MemberMembership(TimeStampedModel):
 
         
 
-class MembersAttendance(models.Model):
+class MemberProgress(TimeStampedModel):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    member = models.ForeignKey(
+        Member,
+        on_delete=models.CASCADE,
+        related_name="progress_logs"
+    )
+    date = models.DateField(default=datetime.date.today)
+    weight = models.FloatField()
+    body_fat = models.FloatField(null=True, blank=True)
+    muscle_mass = models.FloatField(null=True, blank=True)
+    measurements = models.JSONField(default=dict, blank=True)
+    notes = models.TextField(blank=True, null=True)
+
+    class Meta:
+        db_table = "GymMate_member_progress"
+        ordering = ["-date"]
+
+    def __str__(self):
+        return f"{self.member.full_name} - {self.date} ({self.weight}kg)"
+
+
+class MemberAttendance(models.Model):
     STATUS_CHOICES = [
         ("present", "Present"),
         ("absent", "Absent"),
@@ -371,10 +396,42 @@ class MembersAttendance(models.Model):
 
     class Meta:
         unique_together = ("member", "date")
-        db_table = "GymMate_members_attendance"
+        db_table = "GymMate_member_attendance"
 
     def __str__(self):
         return f"{self.member.full_name} - {self.date}"
+
+
+class TrainerAttendance(models.Model):
+    STATUS_CHOICES = [
+        ("present", "Present"),
+        ("absent", "Absent"),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+
+    trainer = models.ForeignKey(
+        Trainer,
+        on_delete=models.CASCADE,
+        related_name="attendance"
+    )
+
+    date = models.DateField()
+    check_in = models.TimeField(null=True, blank=True)
+    check_out = models.TimeField(null=True, blank=True)
+
+    status = models.CharField(
+        max_length=10,
+        choices=STATUS_CHOICES,
+        default="present"
+    )
+
+    class Meta:
+        unique_together = ("trainer", "date")
+        db_table = "GymMate_trainer_attendance"
+
+    def __str__(self):
+        return f"{self.trainer.full_name} - {self.date}"
 
 
 class WorkoutPlan(models.Model):
@@ -382,6 +439,16 @@ class WorkoutPlan(models.Model):
         ("active", "Active"),
         ("completed", "Completed"),
         ("paused", "Paused"),
+    ]
+
+    DAY_CHOICES = [
+        ("Monday", "Monday"),
+        ("Tuesday", "Tuesday"),
+        ("Wednesday", "Wednesday"),
+        ("Thursday", "Thursday"),
+        ("Friday", "Friday"),
+        ("Saturday", "Saturday"),
+        ("Sunday", "Sunday"),
     ]
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -401,6 +468,13 @@ class WorkoutPlan(models.Model):
     name = models.CharField(max_length=255)
     description = models.TextField(blank=True)
 
+    day = models.CharField(
+        max_length=20, 
+        choices=DAY_CHOICES, 
+        default="Monday"
+    )
+    end_time = models.TimeField(null=True, blank=True)
+
     exercises = models.JSONField(default=list)
 
     start_date = models.DateField(null=True, blank=True)
@@ -413,52 +487,53 @@ class WorkoutPlan(models.Model):
     )
     class Meta:
         db_table = "GymMate_workoutplans"
+        unique_together = ["member", "day"]
     def __str__(self):
         return self.name
 
 
-class DietPlan(models.Model):
-    STATUS_CHOICES = [
-        ("active", "Active"),
-        ("completed", "Completed"),
-        ("paused", "Paused"),
-    ]
+# class DietPlan(models.Model):
+#     STATUS_CHOICES = [
+#         ("active", "Active"),
+#         ("completed", "Completed"),
+#         ("paused", "Paused"),
+#     ]
 
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+#     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
-    member = models.ForeignKey(
-        Member,
-        on_delete=models.CASCADE,
-        related_name="diet_plans"
-    )
+#     member = models.ForeignKey(
+#         Member,
+#         on_delete=models.CASCADE,
+#         related_name="diet_plans"
+#     )
     
-    trainer = models.ForeignKey(
-        Trainer,
-        on_delete=models.SET_NULL,
-        null=True,
-        related_name="diet_plans"
-    )
+#     trainer = models.ForeignKey(
+#         Trainer,
+#         on_delete=models.SET_NULL,
+#         null=True,
+#         related_name="diet_plans"
+#     )
 
-    name = models.CharField(max_length=255)
+#     name = models.CharField(max_length=255)
 
-    daily_calories = models.PositiveIntegerField()
-    protein_grams = models.PositiveIntegerField()
-    carbs_grams = models.PositiveIntegerField()
-    fat_grams = models.PositiveIntegerField()
+#     daily_calories = models.PositiveIntegerField()
+#     protein_grams = models.PositiveIntegerField()
+#     carbs_grams = models.PositiveIntegerField()
+#     fat_grams = models.PositiveIntegerField()
 
-    meals = models.JSONField(default=list)
-    notes = models.TextField(blank=True, null=True)
+#     meals = models.JSONField(default=list)
+#     notes = models.TextField(blank=True, null=True)
 
-    status = models.CharField(
-        max_length=20,
-        choices=STATUS_CHOICES,
-        default="active"
-    )
+#     status = models.CharField(
+#         max_length=20,
+#         choices=STATUS_CHOICES,
+#         default="active"
+#     )
     
-    class Meta:
-        db_table = "GymMate_dietplans"
-    def __str__(self):
-        return self.name
+#     class Meta:
+#         db_table = "GymMate_dietplans"
+#     def __str__(self):
+#         return self.name
 
 
 class Payment(models.Model):
@@ -467,6 +542,7 @@ class Payment(models.Model):
         ("card", "Card"),
         ("upi", "UPI"),
         ("bank_transfer", "Bank Transfer"),
+        ("pay_later", "Pay Later"),
     ]
 
     STATUS_CHOICES = [
@@ -508,6 +584,7 @@ class Payment(models.Model):
     gateway_response = models.JSONField(blank=True, null=True)
 
     invoice_number = models.CharField(max_length=100, unique=True)
+    due_date = models.DateField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     class Meta:
@@ -518,7 +595,7 @@ class Payment(models.Model):
 
 class Notification(TimeStampedModel):
 
-    USER_TYPE_CHOICES = [
+    TYPE_CHOICES = [
         ("admin", "Admin"),
         ("member", "Member"),
         ("trainer", "Trainer"),
@@ -530,6 +607,10 @@ class Notification(TimeStampedModel):
         CustomUser,
         on_delete=models.CASCADE,
         related_name="notifications"
+    )
+    type = models.CharField(
+        max_length=20,
+        choices=TYPE_CHOICES
     )
 
     title = models.CharField(max_length=255)
