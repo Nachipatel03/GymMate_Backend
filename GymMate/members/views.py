@@ -112,7 +112,7 @@ class AdminMemberListCreateAPIView(APIView):
     def get(self, request):
 
         if request.user.role == "ADMIN":
-           members = Member.objects.filter(is_deleted=False)
+           members = Member.objects.filter(is_deleted=False).order_by("-created_at")
         elif request.user.role == "TRAINER":
             trainer = request.user.trainer_profile
             members = (
@@ -123,6 +123,7 @@ class AdminMemberListCreateAPIView(APIView):
             )
             .select_related("user", "assigned_trainer")
             .prefetch_related("workout_plans", "diet_plans")
+            .order_by("-created_at")
         )
 
         else:

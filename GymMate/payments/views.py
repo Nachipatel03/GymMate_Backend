@@ -1,11 +1,11 @@
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from rest_framework.permissions import IsAdminUser
-from django.db.models import Sum
+from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from .serializers import PaymentCreateSerializer, PaymentListSerializer, MemberPaymentCreateSerializer
 from django.utils import timezone
 from datetime import timedelta
+from django.db.models import Sum
 from accounts.models import Payment
-from .serializers import PaymentCreateSerializer, PaymentListSerializer
 
 # Create your views here.
 class CreatePaymentAPIView(APIView):
@@ -17,7 +17,23 @@ class CreatePaymentAPIView(APIView):
         payment = serializer.save()
 
         return Response({
-            "message": "Payment successful & membership activated"
+            "message": f"Payment successful & Membership {payment.membership.status} until {payment.membership.end_date}"
+        }, status=201)
+
+class MemberCheckoutAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        if request.user.role != "MEMBER":
+            return Response({"detail": "Only members can checkout."}, status=403)
+
+        serializer = MemberPaymentCreateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        payment = serializer.save()
+
+        return Response({
+            "message": f"Payment successful & Membership {payment.membership.status} until {payment.membership.end_date}",
+            "invoice_number": payment.invoice_number
         }, status=201)
 
 class PaymentListAPIView(APIView):

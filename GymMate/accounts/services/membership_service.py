@@ -1,6 +1,8 @@
 from django.db import transaction
 from django.utils import timezone
 from dateutil.relativedelta import relativedelta
+import random
+import string
 
 from accounts.models import (
     MemberMembership,
@@ -55,7 +57,8 @@ class MembershipService:
         )
 
         # 3️⃣ Create payment
-        invoice_number = f"INV-{int(timezone.now().timestamp())}"
+        random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        invoice_number = f"INV-{int(timezone.now().timestamp())}-{random_str}"
 
         Payment.objects.create(
             member=member,
@@ -127,7 +130,8 @@ class MembershipService:
         active_membership.end_date = new_end_date
         active_membership.save()
 
-        invoice_number = f"INV-{int(timezone.now().timestamp())}"
+        random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        invoice_number = f"INV-{int(timezone.now().timestamp())}-{random_str}"
 
         Payment.objects.create(
             member=member,

@@ -112,3 +112,11 @@ class MembershipPlanDetailAPIView(APIView):
             {"detail": "Membership plan deleted"},
             status=status.HTTP_204_NO_CONTENT
         )
+
+class AvailableMembershipPlansAPIView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        plans = MembershipPlan.objects.filter(is_active=True)
+        serializer = MembershipPlanSerializer(plans, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
