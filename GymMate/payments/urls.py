@@ -1,7 +1,12 @@
 from django.urls import path
-from .views import CreatePaymentAPIView, PaymentListAPIView, RevenueStatsAPIView
+from .views import CreatePaymentAPIView, PaymentListAPIView, RevenueStatsAPIView, MemberCheckoutAPIView
 
 urlpatterns = [
+    path(
+        "checkout/",
+        MemberCheckoutAPIView.as_view(),
+        name="member-checkout"
+    ),
     path(
         "payments/create/",
         CreatePaymentAPIView.as_view(),

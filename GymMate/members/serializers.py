@@ -8,6 +8,9 @@ from accounts.models import (
     CustomUser, MembershipPlan, Trainer, WorkoutPlan
 )
 from diets.models import DietPlan
+import logging
+
+logger = logging.getLogger(__name__)
 
 class MemberProgressSerializer(serializers.ModelSerializer):
     class Meta:
@@ -51,9 +54,9 @@ class MemberRegisterSerializer(serializers.ModelSerializer):
 
             if existing_user:
                 if existing_user.is_active is False:
-                    # ✅ Reactivate old account
-                    existing_user.is_active = False   # keep not active until admin approval
-                    existing_user.is_verified = False
+                    # ✅ Reactivate old account and allow immediate login
+                    existing_user.is_active = True
+                    existing_user.is_verified = True
                     existing_user.password = make_password(password)
                     existing_user.save()
 
@@ -77,12 +80,12 @@ class MemberRegisterSerializer(serializers.ModelSerializer):
                 else:
                     raise serializers.ValidationError("Email already exists.")
 
-            # ✅ If no user exists → create fresh
+            # ✅ If no user exists → create fresh and allow immediate login
             user = CustomUser.objects.create(
                 email=email,
                 role="MEMBER",
-                is_active=False,
-                is_verified=False,
+                is_active=True,
+                is_verified=True,
                 password=make_password(password),
             )
 
@@ -95,7 +98,7 @@ class MemberRegisterSerializer(serializers.ModelSerializer):
             # 🔔 Notify admins about new registration
             MembershipService.notify_admins(
                 title="New Member Registration",
-                message=f"{member.full_name} ({email}) has registered and is awaiting admin approval."
+                message=f"{member.full_name} ({email}) has registered and can now select a membership plan."
             )
 
             return member
@@ -189,11 +192,15 @@ class MemberAdminCreateSerializer(serializers.ModelSerializer):
 
             # ✅ Activate membership if plan selected
             if plan:
-                MembershipService.activate_membership(
-                    member=member,
-                    plan=plan,
-                    payment_method="cash"
-                )
+                try:
+                    MembershipService.activate_membership(
+                        member=member,
+                        plan=plan,
+                        payment_method="cash"
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to activate membership for {member.full_name} during admin creation: {str(e)}")
+                    # We don't re-raise here so that the member is still created and welcome email is sent
         
         # ✅ Send welcome email after transaction success
         EmailService.send_welcome_email(
@@ -247,6 +254,7 @@ class MemberSerializer(serializers.ModelSerializer):
     
     can_change_plan = serializers.SerializerMethodField()
     attendance_streak = serializers.SerializerMethodField()
+    scheduled_memberships = serializers.SerializerMethodField()
 
 
     class Meta:
@@ -267,6 +275,7 @@ class MemberSerializer(serializers.ModelSerializer):
             "weight",
             "goal_weight",
             "active_membership",
+            "scheduled_memberships",
             "workout_plans",   
             "diet_plans",
             
@@ -299,7 +308,7 @@ class MemberSerializer(serializers.ModelSerializer):
     
     def get_active_membership(self, obj):
         membership = obj.memberships.filter(status="active").first()
-        if not membership:
+        if not membership or not membership.plan:
             return None
 
         return {
@@ -309,6 +318,18 @@ class MemberSerializer(serializers.ModelSerializer):
             "end_date": membership.end_date,
             "status": membership.status
         }
+
+    def get_scheduled_memberships(self, obj):
+        memberships = obj.memberships.filter(status="scheduled").order_by("start_date")
+        return [
+            {
+                "plan_id": m.plan.id if m.plan else None,
+                "plan_name": m.plan.name if m.plan else "Unknown",
+                "start_date": m.start_date,
+                "end_date": m.end_date,
+                "status": m.status
+            } for m in memberships
+        ]
 
         
 from accounts.services.membership_service import MembershipService

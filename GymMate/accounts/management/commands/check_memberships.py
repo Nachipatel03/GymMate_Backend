@@ -2,7 +2,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from datetime import timedelta
 
-from accounts.models import MemberMembership, Notification, CustomUser
+from accounts.models import MemberMembership, Notification, CustomUser, Payment
 
 
 class Command(BaseCommand):
@@ -72,7 +72,7 @@ class Command(BaseCommand):
         # --------------------------------------------------
         # 3️⃣ 1 DAY BEFORE EXPIRY → ADMIN
         # --------------------------------------------------
-        admin_notify_date = today + timedelta(days=3)
+        admin_notify_date = today + timedelta(days=1)
 
         expiring_for_admin = MemberMembership.objects.filter(
             end_date=admin_notify_date,
@@ -95,4 +95,30 @@ class Command(BaseCommand):
                         message=f"{membership.member.full_name}'s membership expires tomorrow."
                     )
 
-        self.stdout.write(self.style.SUCCESS("Membership check completed"))
+        # --------------------------------------------------
+        # 4️⃣ PAYMENT DUE TOMORROW → ADMIN
+        # --------------------------------------------------
+        payment_due_date = today + timedelta(days=1)
+        
+        pending_payments = Payment.objects.filter(
+            due_date=payment_due_date,
+            status="pending"
+        )
+
+        for payment in pending_payments:
+            for admin in admins:
+                # Prevent duplicate notification for same payment and admin using invoice number as key
+                if not Notification.objects.filter(
+                    user=admin,
+                    title="Payment Due Tomorrow",
+                    message__icontains=payment.invoice_number
+                ).exists():
+                    
+                    Notification.objects.create(
+                        user=admin,
+                        type="admin",
+                        title="Payment Due Tomorrow",
+                        message=f"Payment for {payment.member.full_name} (Invoice: {payment.invoice_number}) is due tomorrow."
+                    )
+
+        self.stdout.write(self.style.SUCCESS("Membership check completed"))

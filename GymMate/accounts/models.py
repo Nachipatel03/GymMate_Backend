@@ -56,6 +56,8 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     
     username = models.CharField(max_length=150)
     
+    phone = models.CharField(max_length=15, blank=True, null=True)
+    
     is_verified = models.BooleanField(default=False)
     
     USERNAME_FIELD = "email"
@@ -285,6 +287,7 @@ class MemberMembership(TimeStampedModel):
     STATUS_CHOICES = [
         ("active", "Active"),
         ("expired", "Expired"),
+        ("scheduled", "Scheduled"),
         ("cancelled", "Cancelled"),
     ]
 
@@ -338,13 +341,14 @@ class MemberMembership(TimeStampedModel):
             self.end_date = self.start_date + relativedelta(
                 months=self.plan.duration_months
             )
-        super().save(*args, **kwargs)
-        
+            
         if self.status == "active":
             MemberMembership.objects.filter(
                 member=self.member,
                 status="active"
             ).exclude(id=self.id).update(status="expired")
+
+        super().save(*args, **kwargs)
 
         
 
@@ -433,6 +437,20 @@ class TrainerAttendance(models.Model):
     def __str__(self):
         return f"{self.trainer.full_name} - {self.date}"
 
+class TrainerBreak(models.Model):
+    attendance = models.ForeignKey(
+        TrainerAttendance,
+        on_delete=models.CASCADE,
+        related_name="breaks"
+    )
+    start_time = models.TimeField()
+    end_time = models.TimeField(null=True, blank=True)
+    
+    class Meta:
+        db_table = "GymMate_trainer_breaks"
+
+    def __str__(self):
+        return f"Break for {self.attendance.trainer.full_name} on {self.attendance.date}"
 
 class WorkoutPlan(models.Model):
     STATUS_CHOICES = [
@@ -625,3 +643,14 @@ class Notification(TimeStampedModel):
         return self.title
 
 
+class EmailTemplate(TimeStampedModel):
+    slug = models.SlugField(max_length=100, unique=True)
+    name = models.CharField(max_length=255)
+    subject = models.CharField(max_length=255)
+    html_body = models.TextField()
+
+    class Meta:
+        db_table = "GymMate_email_templates"
+
+    def __str__(self):
+        return self.name
