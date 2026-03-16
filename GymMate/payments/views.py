@@ -1,10 +1,13 @@
+from django.utils import timezone
+from datetime import timedelta
+from django.db.models import Sum, Q
+from django.db.models.functions import TruncMonth
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework.permissions import IsAdminUser, IsAuthenticated
+from rest_framework.pagination import PageNumberPagination
+from dateutil.relativedelta import relativedelta
 from .serializers import PaymentCreateSerializer, PaymentListSerializer, MemberPaymentCreateSerializer
-from django.utils import timezone
-from datetime import timedelta
-from django.db.models import Sum
 from accounts.models import Payment
 
 # Create your views here.
@@ -36,13 +39,39 @@ class MemberCheckoutAPIView(APIView):
             "invoice_number": payment.invoice_number
         }, status=201)
 
+from rest_framework.pagination import PageNumberPagination
+from django.db.models import Q
+
+class PaymentPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 class PaymentListAPIView(APIView):
     permission_classes = [IsAdminUser]
 
     def get(self, request):
-        payments = Payment.objects.all().order_by("-created_at")
-        serializer = PaymentListSerializer(payments, many=True)
-        return Response(serializer.data)
+        search_query = request.query_params.get("search", "")
+        status_filter = request.query_params.get("status", "all")
+        
+        payments = Payment.objects.all()
+
+        if status_filter != "all":
+            payments = payments.filter(status=status_filter)
+
+        if search_query:
+            payments = payments.filter(
+                Q(invoice_number__icontains=search_query) |
+                Q(member__full_name__icontains=search_query) |
+                Q(member__email__icontains=search_query)
+            )
+
+        payments = payments.order_by("-created_at")
+        
+        paginator = PaymentPagination()
+        paginated_payments = paginator.paginate_queryset(payments, request)
+        serializer = PaymentListSerializer(paginated_payments, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
 class RevenueStatsAPIView(APIView):
     permission_classes = [IsAdminUser]
@@ -59,21 +88,27 @@ class RevenueStatsAPIView(APIView):
         
         pending_amount = Payment.objects.filter(status="pending").aggregate(Sum("amount"))["amount__sum"] or 0
         
-        # Monthly trend for the last 6 months
+        six_months_ago = (today.replace(day=1) - relativedelta(months=5))
+        
+        monthly_revenue = Payment.objects.filter(
+            status="completed",
+            payment_date__gte=six_months_ago
+        ).annotate(
+            month=TruncMonth('payment_date')
+        ).values('month').annotate(
+            revenue=Sum('amount')
+        ).order_by('month')
+
+        # Map results to last 6 months to ensure all months exist
+        revenue_map = {r['month']: float(r['revenue']) for r in monthly_revenue}
         trend_data = []
         for i in range(5, -1, -1):
-            from dateutil.relativedelta import relativedelta
             m_start = today.replace(day=1) - relativedelta(months=i)
-            m_end = m_start + relativedelta(months=1) - timedelta(days=1)
-            
-            m_revenue = Payment.objects.filter(
-                status="completed",
-                payment_date__range=[m_start, m_end]
-            ).aggregate(Sum("amount"))["amount__sum"] or 0
-            
+            # Normalize to start of month for mapping
+            m_key = m_start.replace(day=1)
             trend_data.append({
                 "name": m_start.strftime("%b"),
-                "revenue": float(m_revenue)
+                "revenue": revenue_map.get(m_key, 0.0)
             })
 
         # Payment methods distribution

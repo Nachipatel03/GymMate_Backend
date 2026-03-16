@@ -51,15 +51,10 @@ class NotificationListAPIView(APIView):
 
     def get(self, request):
 
-        # 🛡 Admin sees ALL notifications
-        if request.user.role == "ADMIN":
-            notifications = Notification.objects.filter( type="admin").order_by("-created_at")
-
-        # 👤 Member sees only their own
-        else:
-            notifications = Notification.objects.filter(
-                user=request.user,
-            ).order_by("-created_at")
+        # 🛡 Admin / Member / Trainer sees only their own notifications
+        notifications = Notification.objects.filter(
+            user=request.user,
+        ).order_by("-created_at")
 
         serializer = NotificationSerializer(notifications, many=True)
         return Response(serializer.data)
@@ -69,24 +64,12 @@ class NotificationMarkReadAPIView(APIView):
 
     def patch(self, request, notification_id):
 
-        # 🛡 Admin can mark any notification
-        if request.user.role == "ADMIN":
-            notification = get_object_or_404(
-                Notification,
-                id=notification_id,
-                type="admin",
-                is_read=False
-            )
-
-        # 👤 Member / Trainer can only mark their own
-        else:
-            notification = get_object_or_404(
-                Notification,
-                id=notification_id,
-                user=request.user,
-                type=request.user.role,
-                is_read=False
-            )
+        # 🛡 Admin / Member / Trainer can only mark their own
+        notification = get_object_or_404(
+            Notification,
+            id=notification_id,
+            user=request.user
+        )
 
         notification.is_read = True
         notification.save()
@@ -98,22 +81,12 @@ class NotificationMarkReadAPIView(APIView):
 
     def delete(self, request, notification_id):
 
-        # 🛡 Admin can delete any notification
-        if request.user.role == "ADMIN":
-            notification = get_object_or_404(
-                Notification,
-                id=notification_id,
-                type="admin"
-            )
-
-        # 👤 Member / Trainer can only delete their own
-        else:
-            notification = get_object_or_404(
-                Notification,
-                id=notification_id,
-                user=request.user,
-                type=request.user.role
-            )
+        # 🛡 Admin / Member / Trainer can only delete their own
+        notification = get_object_or_404(
+            Notification,
+            id=notification_id,
+            user=request.user
+        )
 
         notification.delete()
 
@@ -122,21 +95,29 @@ class NotificationMarkReadAPIView(APIView):
             status=status.HTTP_204_NO_CONTENT
         )
 
+class NotificationMarkAllReadAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request):
+        Notification.objects.filter(
+            user=request.user,
+            is_read=False
+        ).update(is_read=True)
+
+        return Response(
+            {"message": "All notifications marked as read"},
+            status=status.HTTP_200_OK
+        )
+
 class NotificationUnreadCountAPIView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
 
-        if request.user.role == "ADMIN":
-            count = Notification.objects.filter(
-                type="admin",
-                is_read=False
-            ).count()
-        else:
-            count = Notification.objects.filter(
-                user=request.user,
-                is_read=False
-            ).count()
+        count = Notification.objects.filter(
+            user=request.user,
+            is_read=False
+        ).count()
 
         return Response({"unread_count": count})
 

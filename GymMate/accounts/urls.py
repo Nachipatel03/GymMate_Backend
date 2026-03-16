@@ -1,7 +1,7 @@
 from django.urls import path
 from .views import (
     LoginAPIView, MemberRegisterAPIView, NotificationListAPIView, 
-    NotificationMarkReadAPIView, NotificationUnreadCountAPIView, 
+    NotificationMarkReadAPIView, NotificationUnreadCountAPIView, NotificationMarkAllReadAPIView,
     AdminProfileAPIView, ChangePasswordAPIView, PasswordResetRequestAPIView,
     PasswordResetConfirmAPIView, EmailTemplateListAPIView, EmailTemplateDetailAPIView
 )
@@ -14,6 +14,7 @@ urlpatterns = [
     path("token/refresh/", TokenRefreshView.as_view(), name="token_refresh"),
     path("notifications/", NotificationListAPIView.as_view(), name="notifications"),
     path("notifications/unread-count/", NotificationUnreadCountAPIView.as_view(), name="notification-unread-count"),
+    path("notifications/mark-all-read/", NotificationMarkAllReadAPIView.as_view(), name="notification-mark-all-read"),
     path("notifications/<uuid:notification_id>/read/", NotificationMarkReadAPIView.as_view(), name="notification-read"),
     path("admin/profile/", AdminProfileAPIView.as_view(), name="admin-profile"),
     path("change-password/", ChangePasswordAPIView.as_view(), name="change-password"),
