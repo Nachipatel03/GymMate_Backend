@@ -27,6 +27,7 @@ class EmailService:
         Helper method to run send_mail in a background thread.
         """
         try:
+            logger.info(f"Attempting to send email from '{from_email}' to {recipient_list} with subject '{subject}'")
             if html_message:
                 email = EmailMultiAlternatives(subject, message, from_email, recipient_list)
                 email.attach_alternative(html_message, "text/html")

@@ -164,7 +164,8 @@ class PasswordResetRequestAPIView(APIView):
             uid = urlsafe_base64_encode(force_bytes(user.pk))
             
             # Use frontend URL from settings if available, else localhost
-            frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+            # frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+            frontend_url = getattr(settings, 'FRONTEND_URL', 'https://gymmate-uz2j.onrender.com')
             reset_link = f"{frontend_url}/reset-password-confirm/{uid}/{token}/"
             
             context = {
